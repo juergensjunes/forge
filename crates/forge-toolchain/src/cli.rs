@@ -325,6 +325,28 @@ impl ArduinoCli {
             .await
     }
 
+    /// Lädt einen fertigen Build mit dem Upload-Rezept des Cores hoch (für Nicht-ESP-Boards wie den nRF52840).
+    pub async fn upload(
+        &self,
+        fqbn: &str,
+        port: &str,
+        build_dir: &std::path::Path,
+        sketch: &std::path::Path,
+        cancel: &CancellationToken,
+        on_line: impl FnMut(Stream, &str),
+    ) -> Result<()> {
+        let build = build_dir.to_string_lossy();
+        let sketch = sketch.to_string_lossy();
+        self.streamed(
+            &[
+                "upload", "-b", fqbn, "-p", port, "--input-dir", &build, "-v", &sketch,
+            ],
+            cancel,
+            on_line,
+        )
+        .await
+    }
+
     pub async fn install_library(
         &self,
         name: &str,

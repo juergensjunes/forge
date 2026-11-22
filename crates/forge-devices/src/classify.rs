@@ -9,6 +9,8 @@ pub enum Bridge {
     Ch340,
     Ch9102,
     Ftdi,
+    /// Nordic nRF52 mit UF2-/DFU-Bootloader (Seeed XIAO nRF52840): eigenes USB, kein ESP.
+    Nrf52,
     /// Kein USB: ein Board im WLAN, das OTA-Updates anbietet.
     Network,
     Other,
@@ -24,6 +26,8 @@ pub fn classify(vid: u16, pid: u16) -> (Bridge, bool, &'static str) {
         (0x1A86, 0x7523 | 0x7522 | 0x5523) => (Bridge::Ch340, true, "CH340 UART"),
         (0x1A86, 0x55D2..=0x55D4) => (Bridge::Ch9102, true, "CH9102 UART"),
         (0x0403, 0x6001 | 0x6010 | 0x6014 | 0x6015) => (Bridge::Ftdi, true, "FTDI UART"),
+        (0x2886, 0x0045 | 0x8045 | 0x8044 | 0x0044) => (Bridge::Nrf52, true, "XIAO nRF52840"),
+        (0x2886, _) => (Bridge::Nrf52, true, "Seeed XIAO"),
         _ => (Bridge::Other, false, "Serielle Schnittstelle"),
     }
 }
@@ -50,6 +54,11 @@ mod tests {
         assert_eq!(classify(0x1A86, 0x7523).0, Bridge::Ch340);
         assert_eq!(classify(0x1A86, 0x55D4).0, Bridge::Ch9102);
         assert!(classify(0x0403, 0x6001).1);
+    }
+
+    #[test]
+    fn xiao_nrf52840_is_recognised() {
+        assert_eq!(classify(0x2886, 0x8045).0, Bridge::Nrf52);
     }
 
     #[test]

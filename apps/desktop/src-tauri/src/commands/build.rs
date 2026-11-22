@@ -328,6 +328,11 @@ pub async fn flash_run(
         ..args
     };
 
+    // Nicht-ESP-Boards (XIAO nRF52840): Upload-Rezept des Cores, kein esptool, keine Secrets.
+    if !crate::commands::toolchain::is_esp32_fqbn(&args.board.full()) {
+        return flash_with_core(&app, &state, &args, outcome).await;
+    }
+
     // Secrets aus dem Schlüsselbund. Fehlt etwas, wird nicht geflasht.
     let plan = match prepare_secrets(&root, &outcome) {
         Ok(p) => p,
@@ -426,6 +431,57 @@ pub async fn flash_run(
     Ok(FlashResult::Flashed {
         build: outcome,
         flash,
+    })
+}
+
+/// Flasht über `arduino-cli upload`. Das Rezept des Cores setzt den Bootloader selbst (1200-Baud-Touch).
+async fn flash_with_core(
+    app: &AppHandle,
+    state: &AppState,
+    args: &FlashArgs,
+    outcome: BuildOutcome,
+) -> Result<FlashResult, String> {
+    let root = state.root()?;
+    let cli = state.toolchain.cli()?;
+    let fqbn = args.board.full();
+    let dir = build_dir(&state.toolchain.cache_base(), &root, &fqbn);
+    let started = std::time::Instant::now();
+    let bytes = std::fs::read_dir(&dir)
+        .ok()
+        .and_then(|d| {
+            d.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|p| p.extension().is_some_and(|x| x == "hex"))
+        })
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let resume = stop_monitor(state);
+    let cancel = Jobs::begin(&state.jobs.build);
+    let emit = emit_build(app);
+    let mut emit = emit;
+    let result = cli
+        .upload(&fqbn, &args.port, &dir, &root, &cancel, |_, l| {
+            emit(BuildEvent::Output {
+                line: l.to_string(),
+                level: "info".into(),
+            })
+        })
+        .await;
+    if let Some(spec) = resume {
+        // Das Board startet neu und meldet sich oft unter neuem Namen.
+        start_monitor(app, state, spec);
+    }
+    result.map_err(|e| e.to_string())?;
+    Ok(FlashResult::Flashed {
+        build: outcome,
+        flash: FlashOutcome {
+            duration_ms: started.elapsed().as_millis() as u64,
+            bytes,
+            chip: Some("nRF52840".into()),
+            mac: None,
+        },
     })
 }
 

@@ -569,6 +569,8 @@ export const de = {
     coreUpgraded: (v: string) => (v ? `ESP32-Core ${v} installiert` : "ESP32-Core aktualisiert"),
     coreFailed: "Der Core ließ sich nicht aktualisieren",
     setup: "Einrichten",
+    nrfCore: "Seeed-nRF52-Core (XIAO nRF52840)",
+    nrfSetup: "nRF52 einrichten",
     upgradeAll: "Alle aktualisieren",
     outdated: (n: number) => (n === 1 ? "1 Aktualisierung verfügbar" : `${n} Aktualisierungen verfügbar`),
     installZip: "ZIP-Datei installieren …",

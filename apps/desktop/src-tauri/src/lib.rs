@@ -90,6 +90,7 @@ pub fn run() {
             boardcfg::project_set_board,
             toolchain::toolchain_status,
             toolchain::toolchain_setup,
+            toolchain::toolchain_setup_nrf,
             toolchain::boards_list,
             toolchain::fbuild_status,
             toolchain::fbuild_install,

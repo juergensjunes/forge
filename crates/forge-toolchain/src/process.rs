@@ -34,10 +34,42 @@ pub fn base_env() -> Vec<(OsString, OsString)> {
     if let Some(old) = std::env::var_os("PATH") {
         path = format!("{}:{}", old.to_string_lossy(), path);
     }
+    if let Some(dir) = python_shim_dir(&path) {
+        path = format!("{path}:{}", dir.to_string_lossy());
+    }
     vec![
         ("PATH".into(), path.into()),
         ("PYTHONIOENCODING".into(), "utf-8".into()),
     ]
+}
+
+/// macOS kennt nur `python3`, die Post-Build-Schritte mancher Cores (nRF52: DFU-Paket) rufen aber `python` auf.
+/// Fehlt `python`, legen wir einmal ein Skript an, das `python3` aufruft, und hängen dessen Ordner hinten an den PATH.
+fn python_shim_dir(path: &str) -> Option<std::path::PathBuf> {
+    static DIR: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        if path.split(':').any(|d| Path::new(d).join("python").exists()) {
+            return None;
+        }
+        let py3 = path
+            .split(':')
+            .map(|d| Path::new(d).join("python3"))
+            .find(|p| p.exists())?;
+        let dir = std::path::PathBuf::from(std::env::var_os("HOME")?)
+            .join("Library/Caches/Forge/shims");
+        std::fs::create_dir_all(&dir).ok()?;
+        let link = dir.join("python");
+        // Kein Symlink: der Stub unter /usr/bin/python3 wählt sein Werkzeug nach dem Aufrufnamen.
+        let script = format!("#!/bin/sh\nexec \"{}\" \"$@\"\n", py3.to_string_lossy());
+        if std::fs::read_to_string(&link).ok().as_deref() != Some(script.as_str()) {
+            let _ = std::fs::remove_file(&link);
+            std::fs::write(&link, script).ok()?;
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&link, std::fs::Permissions::from_mode(0o755)).ok()?;
+        }
+        Some(dir)
+    })
+    .clone()
 }
 
 fn command(

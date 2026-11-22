@@ -122,6 +122,7 @@ interface Hardware {
 
   init(): Promise<void>;
   runSetup(): Promise<boolean>;
+  runSetupNrf(): Promise<boolean>;
   loadBoards(): Promise<void>;
   loadOptions(fqbn: string): Promise<BoardOption[]>;
   setBoard(fqbn: string, options: Record<string, string>): Promise<void>;
@@ -262,6 +263,23 @@ export const useHardware = create<Hardware>((set, get) => ({
     }
   },
 
+  async runSetupNrf() {
+    set({ setup: { running: true, line: "", fraction: null } });
+    const off = await backend().onToolchainProgress((p) => set((s) => ({ setup: { running: true, line: p.line, fraction: p.fraction ?? s.setup.fraction } })));
+    try {
+      await backend().toolchainSetupNrf();
+      set({ toolchain: await backend().toolchainStatus(), setup: { running: false, line: "", fraction: null } });
+      await get().loadBoards();
+      return true;
+    } catch (e) {
+      set({ setup: { running: false, line: "", fraction: null } });
+      useStore.getState().toast({ kind: "error", title: t.errors.generic, message: errorText(e) });
+      return false;
+    } finally {
+      off();
+    }
+  },
+
   async loadBoards() {
     try {
       set({ boards: await backend().boards() });
@@ -310,7 +328,7 @@ export const useHardware = create<Hardware>((set, get) => ({
   async identify(id, force = false) {
     const st = get();
     const device = st.devices.find((d) => d.id === id);
-    if (!device || !device.likelyEsp || isNetwork(device) || st.identifying || st.activity !== "idle") return;
+    if (!device || !device.likelyEsp || device.bridge === "nrf52" || isNetwork(device) || st.identifying || st.activity !== "idle") return;
     if (!force && st.identity[id]) return;
     const cached = force ? null : readChip(id);
     if (cached) {

@@ -115,6 +115,7 @@ export interface Backend {
   /* Toolchain und Boards */
   toolchainStatus(): Promise<ToolchainStatus>;
   toolchainSetup(): Promise<void>;
+  toolchainSetupNrf(): Promise<void>;
   fbuildStatus(): Promise<FbuildStatus>;
   fbuildInstall(): Promise<void>;
   fbuildSetEnabled(enabled: boolean): Promise<void>;

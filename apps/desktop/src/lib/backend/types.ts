@@ -109,6 +109,8 @@ export interface ToolchainStatus {
   error: string | null;
   /** Neueste Version des ESP32-Cores laut Paketliste. */
   esp32CoreLatest?: string | null;
+  /** Installierter Seeed-nRF52-Core (XIAO nRF52840). */
+  nrf52Core?: string | null;
 }
 
 export interface ToolchainProgress {
@@ -140,7 +142,7 @@ export interface BoardArg {
 }
 
 /* ---------- Geräte ---------- */
-export type Bridge = "esp-native" | "cp210x" | "ch340" | "ch9102" | "ftdi" | "network" | "other";
+export type Bridge = "esp-native" | "cp210x" | "ch340" | "ch9102" | "ftdi" | "nrf52" | "network" | "other";
 
 export interface DeviceInfo {
   id: string;

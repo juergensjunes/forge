@@ -199,6 +199,7 @@ type HardwareApi = Pick<
   Backend,
   | "toolchainStatus"
   | "toolchainSetup"
+  | "toolchainSetupNrf"
   | "onToolchainProgress"
   | "boards"
   | "boardOptions"
@@ -387,6 +388,10 @@ export function createMockHardware(readProject: () => Record<string, string>, op
 
   const api: HardwareApi = {
     toolchainStatus: async () => ({ arduinoCli: "1.5.1", esp32Core: core.installed, esptool: true, error: null, esp32CoreLatest: core.latest }),
+    toolchainSetupNrf: async () => {
+      toolchain.emit({ line: "Installiere Seeed-nRF52-Core", fraction: null });
+      await sleep(200 * speed);
+    },
     toolchainSetup: async () => {
       for (const [i, l] of ["Trage Espressif-Quelle ein", "Lade Paketliste", "Installiere ESP32-Core"].entries()) {
         toolchain.emit({ line: l, fraction: null });

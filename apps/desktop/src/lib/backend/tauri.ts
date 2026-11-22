@@ -139,6 +139,7 @@ export function createTauriBackend(): Backend {
 
     toolchainStatus: () => call<ToolchainStatus>("toolchain_status"),
     toolchainSetup: () => call<void>("toolchain_setup"),
+    toolchainSetupNrf: () => call<void>("toolchain_setup_nrf"),
     onToolchainProgress: (h) => listen<ToolchainProgress>("toolchain:progress", (e) => h(e.payload)),
     boards: () => call<BoardEntry[]>("boards_list"),
     boardOptions: (fqbn) => call<BoardOption[]>("board_options", { fqbn }),

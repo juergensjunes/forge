@@ -8,6 +8,14 @@ use tauri::{AppHandle, Emitter, State};
 
 const ESP32_INDEX: &str = "https://espressif.github.io/arduino-esp32/package_esp32_index.json";
 const ESP32_CORE: &str = "esp32:esp32";
+const SEEED_INDEX: &str = "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json";
+/// Seeed-nRF52-Core (Adafruit-Bootloader) mit XIAO nRF52840 und Sense.
+pub const NRF52_CORE: &str = "Seeeduino:nrf52";
+
+/// Gehört der FQBN zum ESP32-Core? Alles andere flasht über das Upload-Rezept des Cores.
+pub fn is_esp32_fqbn(fqbn: &str) -> bool {
+    fqbn.starts_with("esp32:esp32:")
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +26,8 @@ pub struct ToolchainStatus {
     pub error: Option<String>,
     /// Neueste Version des ESP32-Cores laut Paketliste.
     pub esp32_core_latest: Option<String>,
+    /// Installierter Seeed-nRF52-Core (XIAO nRF52840).
+    pub nrf52_core: Option<String>,
 }
 
 #[tauri::command]
@@ -31,15 +41,17 @@ pub async fn toolchain_status(state: State<'_, AppState>) -> Result<ToolchainSta
                 esptool: false,
                 error: Some(e),
                 esp32_core_latest: None,
+                nrf52_core: None,
             })
         }
     };
     let version = cli.version().await.ok();
-    let core_info = cli
-        .cores()
-        .await
-        .ok()
-        .and_then(|c| c.into_iter().find(|c| c.id == ESP32_CORE));
+    let cores = cli.cores().await.ok().unwrap_or_default();
+    let nrf52_core = cores
+        .iter()
+        .find(|c| c.id == NRF52_CORE)
+        .and_then(|c| c.installed.clone());
+    let core_info = cores.into_iter().find(|c| c.id == ESP32_CORE);
     let core_latest = core_info.as_ref().and_then(|c| c.latest.clone());
     let core = core_info.and_then(|c| c.installed);
     let esptool = state.toolchain.esptool().await.is_ok();
@@ -49,6 +61,7 @@ pub async fn toolchain_status(state: State<'_, AppState>) -> Result<ToolchainSta
         esptool,
         error: None,
         esp32_core_latest: core_latest,
+        nrf52_core,
     })
 }
 
@@ -116,6 +129,55 @@ pub async fn toolchain_setup(app: AppHandle, state: State<'_, AppState>) -> Resu
     Ok(())
 }
 
+/// Richtet den Seeed-nRF52-Core ein (XIAO nRF52840 / Sense): Seeed-Quelle eintragen, Index laden, Core installieren.
+#[tauri::command]
+pub async fn toolchain_setup_nrf(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let cli = state.toolchain.cli()?;
+    let pct = Regex::new(r"(\d+(?:\.\d+)?)\s*%").map_err(|e| e.to_string())?;
+    let cancel = CancellationToken::new();
+    let emit = |app: &AppHandle, line: &str, f: Option<f32>| {
+        let fraction = f.or_else(|| {
+            pct.captures(line)
+                .and_then(|c| c[1].parse::<f32>().ok())
+                .map(|p| p / 100.0)
+        });
+        let _ = app.emit(
+            "toolchain:progress",
+            Progress {
+                line: line.to_string(),
+                fraction,
+            },
+        );
+    };
+    emit(&app, "Trage Seeed-Quelle ein", None);
+    cli.ensure_board_url(SEEED_INDEX)
+        .await
+        .map_err(|e| e.to_string())?;
+    emit(&app, "Lade Paketliste", None);
+    cli.update_index(&cancel, |_, l| emit(&app, l, None))
+        .await
+        .map_err(|e| e.to_string())?;
+    emit(&app, "Installiere Seeed-nRF52-Core", None);
+    cli.install_core(NRF52_CORE, &cancel, |s, l| {
+        if s == Stream::Stdout || s == Stream::Stderr {
+            emit(&app, l, None);
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    // Ohne diese Bibliothek gibt es auf dem XIAO kein `Serial` (USB-CDC läuft über TinyUSB).
+    emit(&app, "Installiere Adafruit TinyUSB Library", None);
+    cli.install_library("Adafruit TinyUSB Library", None, &cancel, |s, l| {
+        if s == Stream::Stdout || s == Stream::Stderr {
+            emit(&app, l, None);
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    state.toolchain.invalidate();
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn boards_list(state: State<'_, AppState>) -> Result<Vec<BoardEntry>, String> {
     let mut boards = state
@@ -126,8 +188,13 @@ pub async fn boards_list(state: State<'_, AppState>) -> Result<Vec<BoardEntry>, 
         .map_err(|e| e.to_string())?;
     // ESP32 zuerst, damit die Liste dort beginnt, wo die Nutzer suchen.
     boards.sort_by(|a, b| {
-        (a.platform != ESP32_CORE)
-            .cmp(&(b.platform != ESP32_CORE))
+        let rank = |p: &str| match p {
+            ESP32_CORE => 0,
+            NRF52_CORE => 1,
+            _ => 2,
+        };
+        rank(&a.platform)
+            .cmp(&rank(&b.platform))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(boards)

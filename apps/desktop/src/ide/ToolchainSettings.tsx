@@ -11,6 +11,7 @@ export function ToolchainSection() {
   const busy = useHardware((s) => s.coreUpgrading);
   const setup = useHardware((s) => s.setup);
   const upgrade = useHardware((s) => s.upgradeCore);
+  const setupNrf = useHardware((s) => s.runSetupNrf);
   const setDialog = useStore((s) => s.setDialog);
   if (!status || !status.arduinoCli) return null;
 
@@ -40,6 +41,18 @@ export function ToolchainSection() {
             </Button>
           ) : null}
           {busy ? <span className="settings-note">{setup.line.slice(0, 60)}</span> : null}
+        </div>
+        <div className="settings-actions">
+          <span>{t.updates.nrfCore}</span>
+          {status.nrf52Core ? <Badge tone="success" icon="check">{t.updates.coreCurrent(status.nrf52Core)}</Badge> : <Badge tone="warning" icon="warning">{t.updates.coreMissing}</Badge>}
+        </div>
+        <div className="settings-actions">
+          {!status.nrf52Core ? (
+            <Button variant="secondary" size="sm" busy={setup.running} onClick={() => void setupNrf()}>
+              {t.updates.nrfSetup}
+            </Button>
+          ) : null}
+          {setup.running && !busy ? <span className="settings-note">{setup.line.slice(0, 60)}</span> : null}
         </div>
       </div>
     </section>
